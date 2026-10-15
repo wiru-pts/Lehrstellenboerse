@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lehrbetriebe finden</title>
+<style>
+  :root {
+    --blau:#1F4E78; --blau2:#2b8ad6; --orange:#f28c28; --gruen:#2e9e6b;
+    --text:#1d2733; --grau:#5f6b78; --rand:#d9e2ec; --bg:#f3f7fb;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family: Arial, Helvetica, sans-serif; color:var(--text); background:var(--bg); line-height:1.4; }
+  .wrap { max-width:1100px; margin:0 auto; padding:16px; }
+
+  .kopf { background:linear-gradient(120deg,var(--blau),var(--blau2)); color:#fff; border-radius:14px 14px 0 0; padding:20px 22px; }
+  .kopf h1 { margin:0 0 4px; font-size:1.5rem; }
+  .kopf p { margin:0; opacity:.92; font-size:.95rem; }
+
+  .formular { display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:14px; align-items:end;
+              background:#fff; padding:18px 22px 20px; border-radius:0 0 14px 14px; box-shadow:0 3px 10px rgba(31,78,120,.12); }
+  .feld label { display:block; font-size:.78rem; font-weight:bold; text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px; }
+  .feld select { width:100%; padding:11px 10px; font-size:1rem; border-radius:8px; background:#fff; color:var(--text);
+                 border:2px solid var(--rand); border-top-width:5px; cursor:pointer; }
+  .f-ort label { color:var(--orange); }      .f-ort select { border-top-color:var(--orange); }
+  .f-fach label { color:var(--gruen); }      .f-fach select { border-top-color:var(--gruen); }
+  .f-beruf label { color:var(--blau2); }     .f-beruf select { border-top-color:var(--blau2); }
+  .feld select:focus { outline:3px solid #b9d6f2; }
+  button.reset { background:var(--blau); color:#fff; border:0; padding:13px 20px; border-radius:8px; cursor:pointer; font-size:.95rem; font-weight:bold; }
+  button.reset:hover { background:#163a59; }
+
+  .leiste { margin:18px 4px 10px; font-weight:bold; color:var(--blau); }
+  .liste { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; }
+  .karte { background:#fff; border-radius:12px; padding:14px 16px; box-shadow:0 2px 6px rgba(0,0,0,.08); border-left:6px solid var(--blau2); }
+  .karte h2 { font-size:1.08rem; margin:0 0 2px; color:var(--blau); }
+  .adr { font-size:.9rem; color:var(--grau); margin-bottom:8px; }
+  .chips { display:flex; flex-wrap:wrap; gap:5px; margin:6px 0; }
+  .chip { font-size:.76rem; padding:3px 10px; border-radius:999px; color:#fff; font-weight:bold; }
+  .tag { font-size:.78rem; padding:3px 10px; border-radius:999px; background:#e6f1fb; color:var(--blau); border:1px solid #bcd7ef; cursor:pointer; }
+  .tag:hover { background:var(--blau2); color:#fff; border-color:var(--blau2); }
+  .zeile { font-size:.9rem; margin:3px 0; word-break:break-word; }
+  .zeile .k { color:var(--grau); }
+  a { color:var(--blau2); }
+  .notiz { margin-top:8px; padding-top:6px; border-top:1px dashed var(--rand); font-size:.85rem; color:var(--grau); }
+  .leer { grid-column:1/-1; padding:26px; text-align:center; color:var(--grau); background:#fff; border-radius:12px; }
+  .demo { background:#fff4d6; border:1px solid #f0d78a; color:#6b5300; padding:8px 12px; border-radius:8px; margin-bottom:12px; font-size:.85rem; }
+
+  @media (max-width:760px) { .formular { grid-template-columns:1fr; } button.reset { width:100%; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="demo" class="demo" hidden>Hinweis: Es werden derzeit Beispieldaten angezeigt.</div>
+
+  <div class="kopf">
+    <h1>Lehrbetriebe finden</h1>
+    <p>Wähle Ort, Fachbereich und/oder Lehrberuf – jede Kombination ist möglich.</p>
+  </div>
+
+  <form class="formular" onsubmit="return false">
+    <div class="feld f-ort">
+      <label for="ort">Ort</label>
+      <select id="ort"></select>
+    </div>
+    <div class="feld f-fach">
+      <label for="fach">Fachbereich</label>
+      <select id="fach"></select>
+    </div>
+    <div class="feld f-beruf">
+      <label for="beruf">Lehrberuf</label>
+      <select id="beruf"></select>
+    </div>
+    <button class="reset" id="reset" type="button">Zurücksetzen</button>
+  </form>
+
+  <div id="anzahl" class="leiste" aria-live="polite"></div>
+  <div id="liste" class="liste"></div>
+</div>
+
+<script>
+/* ================= EINSTELLUNGEN ================= */
+
+/* Link zum veröffentlichten Google Sheet (CSV). Leer = Beispieldaten.
+   Google Sheets: Datei → Freigeben → Im Web veröffentlichen → Blatt wählen
+   → "Werte, durch Kommas getrennt (.csv)" → Veröffentlichen → Link hier einfügen. */
+var SHEET_CSV_URL = "";
+
+/* Zuordnung Lehrberuf → Fachbereich.
+   Wird verwendet, wenn die Tabelle keine Spalte "Fachbereich" hat (oder zusätzlich dazu).
+   Hier nach Bedarf anpassen/ergänzen. */
+var FACHBEREICHE = {
+  "Maurer/in":"Bau & Holz", "Maler/in und Beschichtungstechniker/in":"Bau & Holz", "Zimmerei":"Bau & Holz",
+  "Tischlerei":"Bau & Holz", "Installations- und Gebäudetechnik":"Bau & Holz",
+  "Elektrotechnik":"Elektro & IT", "Mechatronik":"Elektro & IT", "Informationstechnologie":"Elektro & IT",
+  "Metalltechnik":"Metall & Fahrzeug", "Kfz-Technik":"Metall & Fahrzeug",
+  "Bäckerei":"Gastronomie & Lebensmittel", "Fleischverarbeitung":"Gastronomie & Lebensmittel",
+  "Koch/Köchin":"Gastronomie & Lebensmittel", "Gastronomiefachmann/-frau":"Gastronomie & Lebensmittel",
+  "Bürokauffrau/-mann":"Handel & Büro", "Einzelhandel":"Handel & Büro",
+  "Friseur/in":"Körperpflege"
+};
+
+var FARBEN = ["#f28c28","#2e9e6b","#2b8ad6","#8e5bd1","#d1495b","#00a5b5","#c9a400","#5c6b7a"];
+
+var BEISPIELDATEN = [
+  {firma:"Mustermann GmbH", adresse:"Hauptstraße 1", plz:"4810", ort:"Gmunden", person:"Maria Muster", email:"maria.muster@beispiel.at", telefon:"+43 7612 12345", berufe:"Elektrotechnik; Mechatronik", fach:"", notiz:"Beispieldaten"},
+  {firma:"Bäckerei Beispiel", adresse:"Marktplatz 5", plz:"4813", ort:"Altmünster", person:"Josef Beispiel", email:"office@baeckerei-beispiel.at", telefon:"+43 7612 23456", berufe:"Bäckerei; Einzelhandel", fach:"", notiz:""},
+  {firma:"Tischlerei Test", adresse:"Seestraße 12", plz:"4810", ort:"Gmunden", person:"Anna Test", email:"anna@tischlerei-test.at", telefon:"+43 7612 34567", berufe:"Tischlerei; Zimmerei", fach:"", notiz:"Bewerbung bitte schriftlich"},
+  {firma:"Autohaus Demo", adresse:"Industriestraße 8", plz:"4600", ort:"Wels", person:"Karl Demo", email:"karl@autohaus-demo.at", telefon:"+43 7242 45678", berufe:"Kfz-Technik; Bürokauffrau/-mann", fach:"", notiz:""},
+  {firma:"Gasthof Probe", adresse:"Dorfplatz 3", plz:"4802", ort:"Ebensee", person:"Eva Probe", email:"eva@gasthof-probe.at", telefon:"+43 6133 56789", berufe:"Koch/Köchin; Gastronomiefachmann/-frau", fach:"", notiz:""},
+  {firma:"Friseursalon Muster", adresse:"Kirchengasse 4", plz:"4810", ort:"Gmunden", person:"Lisa Muster", email:"lisa@salon-muster.at", telefon:"+43 7612 67890", berufe:"Friseur/in", fach:"", notiz:""},
+  {firma:"IT-Service Demo", adresse:"Technikerweg 2", plz:"4600", ort:"Wels", person:"Peter Demo", email:"peter@it-demo.at", telefon:"+43 7242 78901", berufe:"Informationstechnologie", fach:"", notiz:""}
+];
+
+/* ================= PROGRAMM ================= */
+var alle = [];
+var farbMap = {};
+var $ = function(id){ return document.getElementById(id); };
+
+function esc(s){
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+  });
+}
+function norm(s){ return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,""); }
+function teile(s){ return String(s||"").split(/[;\n]/).map(function(x){ return x.trim(); }).filter(Boolean); }
+
+function parseCSV(text){
+  var rows=[], row=[], f="", q=false;
+  for (var i=0;i<text.length;i++){
+    var c=text[i];
+    if (q){
+      if (c==='"'){ if (text[i+1]==='"'){ f+='"'; i++; } else q=false; }
+      else f+=c;
+    } else {
+      if (c==='"') q=true;
+      else if (c===','){ row.push(f); f=""; }
+      else if (c==='\n'){ row.push(f); rows.push(row); row=[]; f=""; }
+      else if (c!=='\r') f+=c;
+    }
+  }
+  if (f!=="" || row.length){ row.push(f); rows.push(row); }
+  return rows;
+}
+
+function ausCSV(text){
+  var rows = parseCSV(text);
+  if (!rows.length) return [];
+  var h = rows[0].map(function(x){ return norm(x).trim(); });
+  function idx(start){ for (var i=0;i<h.length;i++) if (h[i].indexOf(start)===0) return i; return -1; }
+  var ix = {firma:idx("firmenname"), adresse:idx("adresse"), plz:idx("plz"), ort:idx("ort"),
+            person:idx("ansprechperson"), email:idx("e-mail"), telefon:idx("telefon"),
+            berufe:idx("lehrberuf"), fach:idx("fachbereich"), notiz:idx("anmerkung")};
+  var out=[];
+  for (var r=1;r<rows.length;r++){
+    var z=rows[r];
+    var g=function(k){ return ix[k]>=0 && z[ix[k]] ? z[ix[k]].trim() : ""; };
+    if (!g("firma")) continue;
+    out.push({firma:g("firma"), adresse:g("adresse"), plz:g("plz"), ort:g("ort"), person:g("person"),
+              email:g("email"), telefon:g("telefon"), berufe:g("berufe"), fach:g("fach"), notiz:g("notiz")});
+  }
+  return out;
+}
+
+/* Daten aufbereiten: Listen bilden, Fachbereiche aus Spalte + Zuordnung zusammenführen */
+function vorbereiten(daten){
+  var fSet = {};
+  daten.forEach(function(d){
+    d.bl = teile(d.berufe);
+    var fb = {};
+    teile(d.fach).forEach(function(x){ fb[x]=1; });
+    d.bl.forEach(function(b){ if (FACHBEREICHE[b]) fb[FACHBEREICHE[b]]=1; });
+    d.fl = Object.keys(fb);
+    d.fl.forEach(function(x){ fSet[x]=1; });
+  });
+  Object.keys(fSet).sort(function(a,b){ return a.localeCompare(b,"de"); })
+    .forEach(function(f,i){ farbMap[f] = FARBEN[i % FARBEN.length]; });
+  return daten;
+}
+
+function passt(d, f, skip){
+  if (skip!=="ort"   && f.ort   && d.ort !== f.ort) return false;
+  if (skip!=="fach"  && f.fach  && d.fl.indexOf(f.fach) < 0) return false;
+  if (skip!=="beruf" && f.beruf && d.bl.indexOf(f.beruf) < 0) return false;
+  return true;
+}
+
+/* Dropdown mit Trefferzahlen; berücksichtigt die jeweils anderen Auswahlen */
+function dropdown(id, label, werte, aktuell){
+  var sel = $(id);
+  var keys = Object.keys(werte);
+  if (aktuell && !werte[aktuell]) { werte[aktuell]=0; keys.push(aktuell); }
+  keys.sort(function(a,b){ return a.localeCompare(b,"de"); });
+  sel.innerHTML = '<option value="">' + label + '</option>' + keys.map(function(k){
+    return '<option value="'+esc(k)+'">'+esc(k)+' ('+werte[k]+')</option>';
+  }).join("");
+  sel.value = aktuell || "";
+}
+
+function render(){
+  var f = {ort:$("ort").value, fach:$("fach").value, beruf:$("beruf").value};
+
+  var o={}, fb={}, b={};
+  alle.forEach(function(d){
+    if (passt(d,f,"ort") && d.ort) o[d.ort]=(o[d.ort]||0)+1;
+    if (passt(d,f,"fach")) d.fl.forEach(function(x){ fb[x]=(fb[x]||0)+1; });
+    if (passt(d,f,"beruf")) d.bl.forEach(function(x){ b[x]=(b[x]||0)+1; });
+  });
+  dropdown("ort",   "Alle Orte",          o,  f.ort);
+  dropdown("fach",  "Alle Fachbereiche",  fb, f.fach);
+  dropdown("beruf", "Alle Lehrberufe",    b,  f.beruf);
+  $("fach").parentNode.style.display = Object.keys(farbMap).length ? "" : "none";
+
+  var treffer = alle.filter(function(d){ return passt(d,f,""); });
+  treffer.sort(function(a,b){
+    var c=(a.ort||"").localeCompare(b.ort||"","de");
+    return c || a.firma.localeCompare(b.firma,"de");
+  });
+
+  $("anzahl").textContent = treffer.length + (treffer.length===1 ? " Betrieb gefunden" : " Betriebe gefunden");
+
+  if (!treffer.length){
+    $("liste").innerHTML = '<div class="leer">Keine Betriebe gefunden. Bitte die Auswahl ändern oder zurücksetzen.</div>';
+    return;
+  }
+
+  $("liste").innerHTML = treffer.map(function(d){
+    var farbe = d.fl.length ? farbMap[d.fl[0]] : "var(--blau2)";
+    var chips = d.fl.map(function(x){ return '<span class="chip" style="background:'+farbMap[x]+'">'+esc(x)+'</span>'; }).join("");
+    var tags = d.bl.map(function(x){ return '<span class="tag" data-beruf="'+esc(x)+'" title="Nach diesem Lehrberuf filtern">'+esc(x)+'</span>'; }).join("");
+    var adr = (d.adresse||d.plz||d.ort) ? '<div class="adr">'+esc(d.adresse)+(d.adresse?", ":"")+esc((d.plz+" "+d.ort).trim())+'</div>' : "";
+    var pers = d.person ? '<div class="zeile"><span class="k">Ansprechperson:</span> '+esc(d.person)+'</div>' : "";
+    var mail = d.email ? '<div class="zeile"><span class="k">E-Mail:</span> <a href="mailto:'+esc(d.email)+'">'+esc(d.email)+'</a></div>' : "";
+    var tel = d.telefon ? '<div class="zeile"><span class="k">Tel.:</span> <a href="tel:'+esc(d.telefon.replace(/[^\d+]/g,""))+'">'+esc(d.telefon)+'</a></div>' : "";
+    var notiz = d.notiz ? '<div class="notiz">'+esc(d.notiz)+'</div>' : "";
+    return '<article class="karte" style="border-left-color:'+farbe+'"><h2>'+esc(d.firma)+'</h2>'+adr+
+      (chips?'<div class="chips">'+chips+'</div>':"")+(tags?'<div class="chips">'+tags+'</div>':"")+
+      pers+mail+tel+notiz+'</article>';
+  }).join("");
+}
+
+function start(daten, demo){
+  alle = vorbereiten(daten);
+  $("demo").hidden = !demo;
+  render();
+}
+
+["ort","fach","beruf"].forEach(function(id){ $(id).addEventListener("change", render); });
+$("reset").addEventListener("click", function(){
+  $("ort").value=""; $("fach").value=""; $("beruf").value=""; render();
+});
+$("liste").addEventListener("click", function(e){
+  var t = e.target.closest ? e.target.closest(".tag") : null;
+  if (t){ $("beruf").value = t.getAttribute("data-beruf"); render(); }
+});
+
+if (SHEET_CSV_URL){
+  $("anzahl").textContent = "Daten werden geladen …";
+  fetch(SHEET_CSV_URL, {cache:"no-store"})
+    .then(function(r){ if(!r.ok) throw new Error(r.status); return r.text(); })
+    .then(function(t){ start(ausCSV(t), false); })
+    .catch(function(){
+      $("liste").innerHTML = '<div class="leer">Die Daten konnten nicht geladen werden. Bitte später erneut versuchen.</div>';
+      $("anzahl").textContent = "";
+    });
+} else {
+  start(BEISPIELDATEN, true);
+}
+</script>
+</body>
+</html>
